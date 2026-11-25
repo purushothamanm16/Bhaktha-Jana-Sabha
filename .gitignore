@@ -9,4 +9,3 @@ venv/
 .DS_Store
 hash_password.py
 test_live.py
-.gitignore
