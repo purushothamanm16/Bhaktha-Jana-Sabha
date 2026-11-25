@@ -82,8 +82,15 @@
     else if (!/^(\d+(\.\d*)?|\.\d+)$/.test(amt)) errors.amount = 'Enter a valid amount, for example 1500 or 250.50.';
     else if (Number(amt) <= 0) errors.amount = 'Amount must be greater than zero.';
     else if (!/^\d*\.?\d{0,2}$/.test(amt)) errors.amount = 'Amount can have at most 2 decimal places.';
+    if (!v.timestamp) errors.timestamp = 'Date and time is required.';
     if (!v.type) errors.type = 'Please select Credit or Debit.';
     return errors;
+  }
+
+  // "25-11-2025 09:37" (as stored in the sheet) -> "2025-11-25T09:37" (what the picker needs)
+  function toInputValue(s) {
+    const m = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})/.exec(s || '');
+    return m ? `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}` : '';
   }
 
   function setBusy(btn, busy, text) {
@@ -113,7 +120,7 @@
     let busy = false;
 
     const read = () => ({
-      name: $('#name').value, amount: $('#amount').value,
+      name: $('#name').value, amount: $('#amount').value, timestamp: $('#timestamp').value,
       type: toggle.value, description: $('#description').value,
     });
 
@@ -228,6 +235,7 @@
       editing = tx;
       $('#edit-name').value = tx.name;
       $('#edit-amount').value = typeof tx.amount === 'number' ? String(tx.amount) : String(tx.amount ?? '');
+      $('#edit-timestamp').value = toInputValue(tx.timestamp);
       $('#edit-description').value = tx.description || '';
       toggle.set(tx.type);
       showErrors(form, {}); showFormError(editError, ''); notice.hidden = true;
@@ -265,6 +273,7 @@
       if (busy || !editing) return;
       const data = {
         name: $('#edit-name').value, amount: $('#edit-amount').value,
+        timestamp: $('#edit-timestamp').value,
         type: toggle.value, description: $('#edit-description').value,
       };
       const errors = validate(data);

@@ -24,7 +24,7 @@ import os
 import re
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import google_auth_httplib2
 import httplib2
@@ -147,6 +147,12 @@ def _props():
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def _ist(ts):
+    """Convert our stored UTC timestamp to 'dd-mm-yyyy hh:mm:ss' in IST."""
+    return datetime.fromisoformat(ts).astimezone(IST).strftime("%d-%m-%Y %H:%M:%S")
+
 
 def _is_formula(v):
     return isinstance(v, str) and v.startswith("=")
@@ -166,9 +172,9 @@ def _last_index(rows):
 
 def _read_rows(title, render):
     res = _run(_svc().spreadsheets().values().get(
-        spreadsheetId=_spreadsheet_id(), range=f"'{title}'!A{FIRST_ROW}:D",
+        spreadsheetId=_spreadsheet_id(), range=f"'{title}'!A{FIRST_ROW}:E",
         valueRenderOption=render), retries=2)
-    return [(list(r) + [""] * 4)[:4] for r in res.get("values", [])]
+    return [(list(r) + [""] * 5)[:5] for r in res.get("values", [])]
 
 
 def _all_meta(props):
@@ -202,17 +208,18 @@ def _recent_entries(props, metas, limit=RECENT_LIMIT):
     cands = sorted(metas, key=lambda m: m["ts"], reverse=True)[:limit + 20]
     if not cands:
         return []
-    ranges = [f"'{props[m['tab']]['title']}'!A{m['row']}:D{m['row']}" for m in cands]
+    ranges = [f"'{props[m['tab']]['title']}'!A{m['row']}:E{m['row']}" for m in cands]
     res = _run(_svc().spreadsheets().values().batchGet(
         spreadsheetId=_spreadsheet_id(), ranges=ranges,
         valueRenderOption="UNFORMATTED_VALUE"), retries=2)
     out = []
     for m, vr in zip(cands, res.get("valueRanges", [])):
-        row = ((vr.get("values") or [[]])[0] + [""] * 4)[:4]
+        row = ((vr.get("values") or [[]])[0] + [""] * 5)[:5]
         if not _occupied(row):
             continue
         out.append({"id": m["id"], "type": m["tab"], "no": row[0], "name": str(row[1]),
-                    "amount": row[2], "description": str(row[3]), "ts": m["ts"],
+                    "amount": row[2], "description": str(row[3]), "timestamp": str(row[4]),
+                    "ts": m["ts"],
                     "_tab": m["tab"], "_row": m["row"], "_meta_id": m["meta_id"]})
         if len(out) == limit:
             break
@@ -229,6 +236,8 @@ def _cell(v):
 
 def _write_req(sheet_id, row, serial, tx, include_a):
     cells = [_cell(tx["name"]), _cell(tx["amount"]), _cell(tx["description"])]
+    if tx.get("stamp"):
+        cells.append(_cell(tx["stamp"]))          # column E: date/time typed by the administrator
     if include_a:
         cells.insert(0, _cell(serial))
     return {"updateCells": {
@@ -269,7 +278,7 @@ def _remove_requests(p, row, meta_id):
         return [{"deleteDimension": {"range": {"sheetId": p["id"], "dimension": "ROWS",
                                                "startIndex": row - 1, "endIndex": row}}}], True
     # Tiny grid: Google refuses to delete the last non-frozen row, so just empty it.
-    return [{"updateCells": {"rows": [{"values": [{}, {}, {}]}], "fields": "userEnteredValue",
+    return [{"updateCells": {"rows": [{"values": [{}, {}, {}, {}]}], "fields": "userEnteredValue",
                              "start": {"sheetId": p["id"], "rowIndex": row - 1, "columnIndex": 1}}},
             {"deleteDeveloperMetadata": {"dataFilter": {
                 "developerMetadataLookup": {"metadataId": meta_id}}}}], False
@@ -318,9 +327,9 @@ def list_recent():
         return [_public(e) for e in _recent_entries(props, _all_meta(props))]
 
 
-def add_transaction(tx_type, name, amount, description, tx_id):
+def add_transaction(tx_type, name, amount, description, tx_id, stamp=""):
     """Append a transaction to the Credit or Debit tab. tx_id doubles as a duplicate-submit guard."""
-    tx = {"name": name, "amount": amount, "description": description}
+    tx = {"name": name, "amount": amount, "description": description, "stamp": stamp}
     with _locked():
         props = _props()
         metas = _all_meta(props)
@@ -332,9 +341,9 @@ def add_transaction(tx_type, name, amount, description, tx_id):
     return {"id": tx_id, "type": tx_type, "no": row - FIRST_ROW + 1}
 
 
-def update_transaction(tx_id, tx_type, name, amount, description):
+def update_transaction(tx_id, tx_type, name, amount, description, stamp=""):
     """Edit one of the 10 most recent transactions; moves it between tabs if the type changed."""
-    tx = {"name": name, "amount": amount, "description": description}
+    tx = {"name": name, "amount": amount, "description": description, "stamp": stamp}
     with _locked():
         props = _props()
         metas = _all_meta(props)

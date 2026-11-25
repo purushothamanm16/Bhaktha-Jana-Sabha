@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
-
+from datetime import datetime
 import sheets
 
 load_dotenv()
@@ -51,6 +51,11 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, session_cookie="sab
                    max_age=SESSION_SECONDS, same_site="lax", https_only=COOKIE_SECURE)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+try:
+    templates.env.globals["sheet_url"] = (
+        f"https://docs.google.com/spreadsheets/d/{sheets._spreadsheet_id()}/edit")
+except sheets.SheetsError:
+    templates.env.globals["sheet_url"] = ""
 
 
 @app.middleware("http")
@@ -222,6 +227,108 @@ def validate(payload):
     if tx_type not in sheets.TABS:
         _invalid("Invalid transaction type.")
 
+    raw_stamp = str(payload.get("timestamp") or "").strip().replace("T", " ")
+    if not raw_stamp:
+        _invalid("Date and time is required.")
+    stamp_dt = None
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            stamp_dt = datetime.strptime(raw_stamp, fmt)
+            break
+        except ValueError:
+            pass
+    if stamp_dt is None or not (2000 <= stamp_dt.year <= 2100):
+        _invalid("Enter a valid date and time.")
+    stamp = stamp_dt.strftime("%d-%m-%Y %H:%M")        # stored exactly as typed (IST)
+
+    description = re.sub(r"[^\S\n]+", " ", str(payload.get("description") or ""))
+    description = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", description).strip()
+    if len(description) > 500:
+        _invalid("Description must be 500 characters or fewer.")
+
+    return {"name": name, "amount": amount_value, "type": tx_type,
+            "description": description, "stamp": stamp}
+    """Validate and clean a submitted transaction. Raises HTTPException(422) with a clear message."""
+    name = re.sub(r"\s+", " ", str(payload.get("name") or "")).strip()
+    if not name:
+        _invalid("Name is required.")
+    if len(name) > 100:
+        _invalid("Name must be 100 characters or fewer.")
+
+    raw = payload.get("amount")
+    if raw is None or isinstance(raw, bool) or str(raw).strip() == "":
+        _invalid("Amount is required.")
+    text = str(raw).strip().replace(",", "")
+    if text.startswith("-"):
+        _invalid("Amount must be greater than zero.")
+    if not AMOUNT_RE.match(text):
+        _invalid("Enter a valid amount, for example 1500 or 250.50.")
+    amount = Decimal(text)
+    if amount <= 0:
+        _invalid("Amount must be greater than zero.")
+    if amount.as_tuple().exponent < -2:
+        _invalid("Amount can have at most 2 decimal places.")
+    if amount >= Decimal("1000000000000"):
+        _invalid("Amount is too large.")
+    amount_value = int(amount) if amount == amount.to_integral_value() else float(amount)
+
+    tx_type = str(payload.get("type") or "").strip().lower()
+    if not tx_type:
+        _invalid("Select Credit or Debit.")
+    if tx_type not in sheets.TABS:
+        _invalid("Invalid transaction type.")
+
+    raw_stamp = str(payload.get("timestamp") or "").strip().replace("T", " ")
+    if not raw_stamp:
+        _invalid("Date and time is required.")
+    stamp_dt = None
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            stamp_dt = datetime.strptime(raw_stamp, fmt)
+            break
+        except ValueError:
+            pass
+    if stamp_dt is None or not (2000 <= stamp_dt.year <= 2100):
+        _invalid("Enter a valid date and time.")
+    stamp = stamp_dt.strftime("%d-%m-%Y %H:%M")        # stored exactly as typed (IST)
+
+    description = re.sub(r"[^\S\n]+", " ", str(payload.get("description") or ""))
+    description = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", description).strip()
+    if len(description) > 500:
+        _invalid("Description must be 500 characters or fewer.")
+
+    return {"name": name, "amount": amount_value, "type": tx_type,
+            "description": description, "stamp": stamp}
+    """Validate and clean a submitted transaction. Raises HTTPException(422) with a clear message."""
+    name = re.sub(r"\s+", " ", str(payload.get("name") or "")).strip()
+    if not name:
+        _invalid("Name is required.")
+    if len(name) > 100:
+        _invalid("Name must be 100 characters or fewer.")
+
+    raw = payload.get("amount")
+    if raw is None or isinstance(raw, bool) or str(raw).strip() == "":
+        _invalid("Amount is required.")
+    text = str(raw).strip().replace(",", "")
+    if text.startswith("-"):
+        _invalid("Amount must be greater than zero.")
+    if not AMOUNT_RE.match(text):
+        _invalid("Enter a valid amount, for example 1500 or 250.50.")
+    amount = Decimal(text)
+    if amount <= 0:
+        _invalid("Amount must be greater than zero.")
+    if amount.as_tuple().exponent < -2:
+        _invalid("Amount can have at most 2 decimal places.")
+    if amount >= Decimal("1000000000000"):
+        _invalid("Amount is too large.")
+    amount_value = int(amount) if amount == amount.to_integral_value() else float(amount)
+
+    tx_type = str(payload.get("type") or "").strip().lower()
+    if not tx_type:
+        _invalid("Select Credit or Debit.")
+    if tx_type not in sheets.TABS:
+        _invalid("Invalid transaction type.")
+
     description = re.sub(r"[^\S\n]+", " ", str(payload.get("description") or ""))
     description = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", description).strip()
     if len(description) > 500:
@@ -242,7 +349,8 @@ def api_create(payload: dict = Body(...), _: None = Depends(require_api)):
         client_id = str(uuid.UUID(str(payload.get("client_id"))))
     except ValueError:
         client_id = str(uuid.uuid4())
-    result = sheets.add_transaction(tx["type"], tx["name"], tx["amount"], tx["description"], client_id)
+    result = sheets.add_transaction(tx["type"], tx["name"], tx["amount"], tx["description"],
+                                    client_id, tx["stamp"])
     return {"ok": True, "transaction": result}
 
 
@@ -253,7 +361,8 @@ def api_update(tx_id: str, payload: dict = Body(...), _: None = Depends(require_
     except ValueError:
         raise HTTPException(404, "That transaction could not be found.")
     tx = validate(payload)
-    result = sheets.update_transaction(tx_id, tx["type"], tx["name"], tx["amount"], tx["description"])
+    result = sheets.update_transaction(tx_id, tx["type"], tx["name"], tx["amount"],
+                                       tx["description"], tx["stamp"])
     return {"ok": True, "transaction": result}
 
 @app.delete("/api/transactions/{tx_id}")
