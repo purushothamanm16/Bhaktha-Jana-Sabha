@@ -1,0 +1,11 @@
+.env
+*.json
+!package.json
+service-account*
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+hash_password.py
+test_live.py

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Recent Transactions{% endblock %}
+{% block content %}
+<main class="wrap wide">
+  <section aria-labelledby="recent-title">
+    <div class="section-head">
+      <h1 id="recent-title">RECENT TRANSACTIONS</h1>
+      <img class="divider" src="/static/images/divider.svg" alt="" width="240" height="24">
+      <p class="subtitle">The latest 10 entries from Credit and Debit, newest first</p>
+    </div>
+
+    <div id="list-status" class="status" role="status">Loading…</div>
+
+    <div class="table-wrap" id="table-wrap" hidden>
+      <table>
+        <thead>
+          <tr><th>No.</th><th>Name</th><th>Amount</th><th>Type</th><th>Description</th><th>Action</th></tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+    </div>
+    <div class="cards" id="tx-cards"></div>
+  </section>
+</main>
+
+<dialog id="edit-dialog" aria-labelledby="edit-title">
+  <form id="edit-form" novalidate>
+    <div class="card-head">
+      <h2 id="edit-title">Edit Transaction</h2>
+      <img class="divider" src="/static/images/divider.svg" alt="" width="240" height="24">
+    </div>
+
+    <div class="field">
+      <label for="edit-name">Name</label>
+      <input id="edit-name" type="text" maxlength="100" autocomplete="off">
+      <p class="field-error" data-for="name"></p>
+    </div>
+
+    <div class="field">
+      <label for="edit-amount">Amount</label>
+      <div class="input-prefix">
+        <span aria-hidden="true">₹</span>
+        <input id="edit-amount" type="text" inputmode="decimal" autocomplete="off">
+      </div>
+      <p class="field-error" data-for="amount"></p>
+    </div>
+
+    <div class="field">
+      <span class="label" id="edit-type-label">Transaction Type</span>
+      <div class="type-toggle" id="edit-type-toggle" role="group" aria-labelledby="edit-type-label">
+        <button type="button" class="type-btn credit" data-type="credit" aria-pressed="false">Credit</button>
+        <button type="button" class="type-btn debit" data-type="debit" aria-pressed="false">Debit</button>
+      </div>
+      <p class="field-error" data-for="type"></p>
+    </div>
+
+    <div class="field">
+      <label for="edit-description">Description <span class="optional">(optional)</span></label>
+      <textarea id="edit-description" rows="3" maxlength="500"></textarea>
+      <p class="field-error" data-for="description"></p>
+    </div>
+
+    <p class="notice" id="move-notice" hidden>Changing the type moves this entry to the other sheet and renumbers both.</p>
+    <div class="form-error" id="edit-error" role="alert" hidden></div>
+    <button type="button" class="btn-danger" id="edit-delete">Delete this transaction</button>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="edit-cancel">Cancel</button>
+      <button type="submit" class="btn-gold" id="edit-save">Save Changes</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="/static/js/app.js?v=2"></script>{% endblock %}

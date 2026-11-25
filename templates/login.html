@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<main class="login-wrap">
+  <section class="card login-card">
+    <img class="lamp" src="/static/images/lamp.svg" alt="" width="84" height="84">
+    <h1 class="login-title">Manikandan<br>Bhaktha Jana Sabha</h1>
+    <img class="divider" src="/static/images/divider.svg" alt="" width="240" height="24">
+    <p class="subtitle">Administrator sign in</p>
+
+    {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/login" autocomplete="on">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-gold">Sign In</button>
+    </form>
+  </section>
+</main>
+{% endblock %}
